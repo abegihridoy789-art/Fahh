@@ -1,4 +1,4 @@
-cd ~/meta-bot
+cd ~/fahh-bot
 cat > run.py << 'PYEOF'
 import sys, os, asyncio, inspect
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
