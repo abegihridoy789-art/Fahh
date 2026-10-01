@@ -1,6 +1,6 @@
-cd ~/meta-bot-git
+cd ~/fahh-bot-git
 cat > README.md << 'EOF'
-# Meta Bot
+# Fahh Bot
 
 ## Install
 
