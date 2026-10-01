@@ -1,0 +1,10 @@
+cd ~/meta
+cat > requirements.txt << 'EOF'
+httpx
+h2
+requests
+selenium
+webdriver-manager
+EOF
+
+cat requirements.txt
