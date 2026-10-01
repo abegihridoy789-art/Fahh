@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import hashlib
 import json
 import logging
 import random
@@ -27,7 +29,7 @@ logging.basicConfig(
     level=logging.INFO,
 )
 
-BOT_TOKEN = "8602647816:AAFXDQHWxcTtK39kJ6yuk4QkoZhmj1LsVWc"
+BOT_TOKEN = "8566960112:AAGCvLfA9tKI4WjuDNh2RPfVeNP74D38jDQ"
 
 # ================= URL & API ENDPOINTS =================
 TARGET_CREATE_URL = "https://auth.meta.com/login/device-based/register-save-credentials/"
@@ -87,6 +89,7 @@ HEADERS_TEMPMAIL = {
     "referer": "https://instanttempemail.com/",
 }
 
+# ✅ পাসওয়ার্ড ফিল্ডটি খালি রাখা হয়েছে - রানটাইমে সেট হবে
 BASE_FORM_CREATE = {
     "consent_version": "",
     "contact_point_type": "EMAIL_ADDRESS",
@@ -103,7 +106,7 @@ BASE_FORM_CREATE = {
     "ig_oidc_access_token": "",
     "last_name": "Sjs",
     "opt_into_marketing": "true",
-    "password": "#PWD_BROWSER:5:1789066665:AcZQADoMrutQCauVmt6U7oTsG79gSy0TKLevqNqGn6zbyOggVegr2pN886zRpoaPQqwdc+KiHnYeD6XbrYwM2HEU04SfXU8gNNrmKXVZ50rsGbdozTDXzT2YkY1EJoBnG833WcAXL3t80TttfQk=",
+    "password": "",  # ← রানটাইমে সেট হবে
     "reg_integrity": "Q8W2BTuKa24cQO_B6qvNeGtvmIjuAiCCCvXaCbgkwfWbqt-rPjXJArjnIu5K2myj2GHMJPPSr6BbjXBUFU17JuiZ3IvWTGB_fpfbXwr1sq6qX5lwBCHho2TWDE4ACpgpKGop91SIXofE0KTu2MBkdW1Ss0D6TG7isv6lz2N1CLlYDcRuoiMmSnzt_3_tNldGlheeYm1KVKQyQckdk6G2PoiceW2vxKWbivZ6HJPdq-QsNs4JB7yqEnYY2B3u6mfepC066IZYhv9ZgWpXIuYUsgim6pBbL6NyF84-UsOy8kYIOZlCHc_2PFK4SRPhdx0RMJipGYiIeb5y-Nwj_VHS1Tc2es-jc6aZ7hlBsBokGAeo-cnYEERpIKXz_OnmFTc48WHp2nMcJxww|kregenc",
     "should_save_credentials": "true",
     "waterfall_id": "701777af-c668-4a8d-976a-0c0f619d807a",
@@ -127,15 +130,41 @@ BASE_FORM_CREATE = {
 
 USER_SESSIONS = {}
 
+
 def get_main_keyboard():
     return ReplyKeyboardMarkup([[KeyboardButton("Create")]], resize_keyboard=True)
+
 
 def get_cancel_inline():
     return InlineKeyboardMarkup([[InlineKeyboardButton("❌ Cancel", callback_data="cancel_action")]])
 
+
 def generate_random_token(length=24):
     chars = string.ascii_letters + string.digits
     return "".join(random.choices(chars, k=length))
+
+
+def encode_meta_password(password: str) -> str:
+    """
+    মেটার পাসওয়ার্ড ফরম্যাটে এনকোড করে।
+    ফরম্যাট: #PWD_BROWSER:5:<timestamp>:<base64_encoded>
+    """
+    try:
+        # একটি র্যান্ডম salt/key তৈরি করা হচ্ছে (মেটার ইন্টারনাল ফরম্যাট অনুকরণ)
+        key = hashlib.sha256(str(random.random()).encode()).digest()[:16]
+        # পাসওয়ার্ড XOR করা হচ্ছে key এর সাথে
+        pw_bytes = password.encode()
+        encrypted = bytes([pw_bytes[i] ^ key[i % len(key)] for i in range(len(pw_bytes))])
+        # key + encrypted একসাথে base64 এনকোড
+        combined = key + encrypted
+        b64 = base64.b64encode(combined).decode()
+        timestamp = int(time.time())
+        return f"#PWD_BROWSER:5:{timestamp}:{b64}"
+    except Exception:
+        # ফলব্যাক: সাধারণ base64
+        b64 = base64.b64encode(password.encode()).decode()
+        return f"#PWD_BROWSER:5:{int(time.time())}:{b64}"
+
 
 def parse_meta_response(text: str):
     clean = text.strip()
@@ -146,10 +175,12 @@ def parse_meta_response(text: str):
     except Exception:
         return None
 
+
 def calculate_jazoest(token: str) -> str:
     if not token:
         return "25584"
     return "2" + str(sum(ord(c) for c in str(token)))
+
 
 def extract_tokens_and_uid(html: str):
     fb_dtsg = ""
@@ -195,6 +226,7 @@ def extract_tokens_and_uid(html: str):
 
     return fb_dtsg, lsd, actor_id
 
+
 def classify_create_response(status_code: int, data: Optional[dict], raw_text: str):
     if data is None:
         if "uid" in raw_text:
@@ -214,6 +246,7 @@ def classify_create_response(status_code: int, data: Optional[dict], raw_text: s
 
     return False, "Unknown response"
 
+
 # ================= TEMP MAIL FUNCTIONS =================
 async def create_temp_mail() -> Optional[dict]:
     try:
@@ -224,6 +257,7 @@ async def create_temp_mail() -> Optional[dict]:
     except Exception as e:
         logging.error(f"Temp mail error: {e}")
     return None
+
 
 async def poll_temp_mail_otp_realtime(token: str, status_msg, base_text: str, user_id: int, max_retries: int = 20, delay: float = 3.0) -> Tuple[Optional[str], str]:
     inbox_url = f"{TEMPMAIL_INBOX_URL}{token}"
@@ -268,12 +302,13 @@ async def poll_temp_mail_otp_realtime(token: str, status_msg, base_text: str, us
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    USER_SESSIONS[user_id] = {"state": "NONE", "is_canceled": False}
+    USER_SESSIONS[user_id] = {"state": "NONE", "is_canceled": False, "password": None}
     await update.message.reply_text(
         "👋 **Welcome!**\n\nClick the **'Create'** button below to create and confirm an account automatically:",
         reply_markup=get_main_keyboard(),
         parse_mode="Markdown"
     )
+
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -289,20 +324,52 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception:
             pass
 
+
 async def handle_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     text = update.message.text.strip()
 
     if user_id not in USER_SESSIONS:
-        USER_SESSIONS[user_id] = {"state": "NONE", "is_canceled": False}
+        USER_SESSIONS[user_id] = {"state": "NONE", "is_canceled": False, "password": None}
 
+    # ✅ ধাপ ১: "Create" বাটনে ক্লিক করলে পাসওয়ার্ড চাইবে
     if text == "Create":
+        USER_SESSIONS[user_id]["state"] = "AWAITING_PASSWORD"
+        USER_SESSIONS[user_id]["is_canceled"] = False
+        await update.message.reply_text(
+            "🔐 **পাসওয়ার্ড ইনপুট দিন**\n"
+            "━━━━━━━━━━━━━━━━━━━━━\n"
+            "অনুগ্রহ করে অ্যাকাউন্টের জন্য একটি পাসওয়ার্ড পাঠান।\n\n"
+            "📌 **শর্তাবলী:**\n"
+            "• কমপক্ষে ৬ অক্ষর\n"
+            "• যেকোনো ক্যারেক্টার ব্যবহার করা যাবে\n\n"
+            "✍️ এখন আপনার পাসওয়ার্ড টাইপ করে পাঠান:",
+            reply_markup=get_cancel_inline(),
+            parse_mode="Markdown"
+        )
+        return
+
+    # ✅ ধাপ ২: ইউজার পাসওয়ার্ড পাঠালে সেটি নিয়ে প্রসেস শুরু হবে
+    if USER_SESSIONS[user_id].get("state") == "AWAITING_PASSWORD":
+        password = text
+
+        if len(password) < 6:
+            await update.message.reply_text(
+                "❌ **পাসওয়ার্ড খুব ছোট!**\n"
+                "কমপক্ষে ৬ অক্ষরের পাসওয়ার্ড দিন।\n\n"
+                "আবার চেষ্টা করুন:",
+                parse_mode="Markdown"
+            )
+            return
+
+        USER_SESSIONS[user_id]["password"] = password
         USER_SESSIONS[user_id]["state"] = "PROCESSING"
         USER_SESSIONS[user_id]["is_canceled"] = False
 
         status_msg = await update.message.reply_text(
             "⚡ **REAL-TIME ACCOUNT CREATOR**\n"
             "━━━━━━━━━━━━━━━━━━━━━\n"
+            "✅ **পাসওয়ার্ড গৃহীত!**\n"
             "⏳ **Step 1/4:** Generating Temp Mail...\n"
             "━━━━━━━━━━━━━━━━━━━━━",
             reply_markup=get_cancel_inline(),
@@ -338,9 +405,10 @@ async def handle_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception:
             pass
 
-        # 2. Meta Account Creation
+        # ✅ 2. Meta Account Creation - ইউজারের পাসওয়ার্ড এনকোড করে ব্যবহার
         data = dict(BASE_FORM_CREATE)
         data["contact_point"] = temp_email
+        data["password"] = encode_meta_password(password)  # ← ইউজারের পাসওয়ার্ড এনকোড করে সেট
         data["redirect_uri"] = (
             "https://auth.meta.com/recover/success/?redirect_uri="
             "https%3A%2F%2Fauth.meta.com%2Foidc%3Fapp_id%3D1522763855472543"
@@ -412,7 +480,6 @@ async def handle_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if USER_SESSIONS[user_id].get("is_canceled"):
                 return
 
-            # Live Update: Account Created, Polling OTP
             dashboard_step2 = (
                 "⚡ **REAL-TIME ACCOUNT CREATOR**\n"
                 "━━━━━━━━━━━━━━━━━━━━━\n"
@@ -459,7 +526,6 @@ async def handle_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     pass
                 return
 
-            # Live Update: OTP Found, Confirming
             dashboard_step3 = (
                 "⚡ **REAL-TIME ACCOUNT CREATOR**\n"
                 "━━━━━━━━━━━━━━━━━━━━━\n"
@@ -538,7 +604,7 @@ async def handle_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             USER_SESSIONS[user_id]["state"] = "NONE"
 
-            # 4. Final Output Card
+            # 4. Final Output Card - ✅ ইউজারের দেওয়া পাসওয়ার্ড দেখানো হচ্ছে
             if confirm_info.get("isConfirmed") is True:
                 confirmed_acc_id = confirm_info.get("accountId", final_uid)
                 final_dashboard = (
@@ -547,7 +613,7 @@ async def handle_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f"✅ Step 1 (Email): `{temp_email}`\n"
                     f"✅ Step 2 (UID): `{confirmed_acc_id}`\n"
                     f"✅ Step 3 (OTP Code): `{otp_code}`\n"
-                    "✅ Password arafat@@## 🟢\n"
+                    f"✅ Password: `{password}` 🟢\n"
                     "━━━━━━━━━━━━━━━━━━━━━"
                 )
             else:
@@ -557,7 +623,7 @@ async def handle_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f"✅ Step 1 (Email): `{temp_email}`\n"
                     f"✅ Step 2 (UID): `{final_uid}`\n"
                     f"✅ Step 3 (OTP Code): `{otp_code}`\n"
-                    "✅ Password arafat@@## 🟢\n"
+                    f"✅ Password: `{password}` 🟢\n"
                     "━━━━━━━━━━━━━━━━━━━━━"
                 )
 
@@ -576,8 +642,10 @@ async def handle_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text("Please click the **'Create'** button below to start.", reply_markup=get_main_keyboard())
 
+
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     logging.error("Exception while handling update:", exc_info=context.error)
+
 
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
@@ -587,6 +655,7 @@ def main():
     app.add_error_handler(error_handler)
     print("Bot is running...")
     app.run_polling()
+
 
 if __name__ == "__main__":
     main()
