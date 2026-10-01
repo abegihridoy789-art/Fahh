@@ -1,4 +1,4 @@
-cd ~/meta
+cd ~/fahh
 cat > requirements.txt << 'EOF'
 httpx
 h2
